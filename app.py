@@ -19,6 +19,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Fiscal year starts in July (month 7). July = fiscal month 1, ..., March = fiscal month 9.
+FISCAL_START_MONTH = 7
+
+def fiscal_month(report_month_str: str) -> int:
+    """Return fiscal month number (1–12) for a 'YYYY-MM' string."""
+    cal = int(report_month_str.split("-")[1])
+    return ((cal - FISCAL_START_MONTH) % 12) + 1
+
 # Color palette
 GREEN = "#2E7D32"
 RED = "#C62828"
@@ -410,7 +418,7 @@ with tab1:
     st.markdown("")
 
     # ── Projected Year-End Row ──
-    month_num = int(selected_month.split("-")[1])
+    month_num = fiscal_month(selected_month)   # e.g. March → 9
     if month_num > 0 and ytd_inc > 0:
         proj_inc = (ytd_inc / month_num) * 12
         proj_exp = (ytd_exp / month_num) * 12
@@ -462,7 +470,12 @@ with tab1:
                 <div class="kpi-var">{net_var}</div>
             </div>""", unsafe_allow_html=True)
 
-        st.caption(f"Based on {month_num} month(s) of actuals · Assumes same monthly average through December")
+        months_remaining = 12 - month_num
+        st.caption(
+            f"Fiscal month {month_num} of 12 (fiscal year starts July) · "
+            f"YTD actuals averaged over {month_num} months · "
+            f"{months_remaining} month(s) projected forward"
+        )
 
     st.markdown("")
 
@@ -808,13 +821,13 @@ with tab4:
 
     col_a, col_b = st.columns(2)
 
-    tab4_month_num = int(selected_month.split("-")[1])
+    tab4_month_num = fiscal_month(selected_month)
     expected_pace_pct = (tab4_month_num / 12) * 100
 
     with col_a:
         st.markdown('<div class="section-header">YTD Progress vs Budget Pace</div>', unsafe_allow_html=True)
         st.caption(
-            f"Month {tab4_month_num} of 12 · Expected pace: {expected_pace_pct:.0f}% · "
+            f"Fiscal month {tab4_month_num} of 12 (Jul–Jun) · Expected pace: {expected_pace_pct:.0f}% · "
             f"│ = where you should be today"
         )
         for flow in ["Income", "Expense"]:
