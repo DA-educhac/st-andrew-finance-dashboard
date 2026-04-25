@@ -167,9 +167,14 @@ with st.sidebar:
     st.markdown("---")
 
 # ──────────────────────────────────────────────
-#  Parse uploaded files
+#  Parse uploaded files (or load defaults from data/)
 # ──────────────────────────────────────────────
-if not uploaded_files:
+import os, pathlib
+
+DATA_DIR = pathlib.Path(__file__).parent / "data"
+default_files = sorted(DATA_DIR.glob("*.xlsx")) if DATA_DIR.exists() else []
+
+if not uploaded_files and not default_files:
     st.markdown("""
     <div style="text-align: center; margin-top: 5rem;">
         <h2 style="color: #1565C0;">Welcome to the St. Andrew Financial Dashboard</h2>
@@ -184,7 +189,10 @@ if not uploaded_files:
 
 # Parse all files
 all_dfs = []
-for f in uploaded_files:
+sources = uploaded_files if uploaded_files else default_files
+if not uploaded_files and default_files:
+    st.sidebar.success(f"✅ {len(default_files)} saved file(s) loaded automatically")
+for f in sources:
     try:
         df = parse_soa(f)
         if df.empty:
@@ -227,8 +235,10 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    files_loaded = len(uploaded_files) if uploaded_files else len(default_files)
+    source_label = "uploaded" if uploaded_files else "saved"
     st.markdown(
-        f"<small style='color:#999;'>📁 {len(uploaded_files)} file(s) loaded<br>"
+        f"<small style='color:#999;'>📁 {files_loaded} file(s) {source_label}<br>"
         f"📅 {len(months)} month(s) available<br>"
         f"📋 {len(data)} line items total</small>",
         unsafe_allow_html=True,
