@@ -399,6 +399,63 @@ with tab1:
 
     st.markdown("")
 
+    # ── Projected Year-End Row ──
+    month_num = int(selected_month.split("-")[1])
+    if month_num > 0 and ytd_inc > 0:
+        proj_inc = (ytd_inc / month_num) * 12
+        proj_exp = (ytd_exp / month_num) * 12
+        proj_net = proj_inc - proj_exp
+
+        st.markdown(
+            '<div class="section-header">📡 Projected Year-End (at current run rate)</div>',
+            unsafe_allow_html=True,
+        )
+        p1, p2, p3 = st.columns(3)
+
+        def proj_card(label, projected, budget, is_expense=False):
+            diff = projected - budget
+            if budget == 0:
+                var_html = ""
+            elif is_expense:
+                color = "#C62828" if diff > 0 else "#2E7D32"
+                arrow = "▲" if diff > 0 else "▼"
+                label2 = "over annual budget" if diff > 0 else "under annual budget"
+                var_html = f'<span style="color:{color};font-weight:600">{arrow} {fmt(abs(diff))} {label2}</span>'
+            else:
+                color = "#2E7D32" if diff >= 0 else "#C62828"
+                arrow = "▲" if diff >= 0 else "▼"
+                label2 = "above annual budget" if diff >= 0 else "below annual budget"
+                var_html = f'<span style="color:{color};font-weight:600">{arrow} {fmt(abs(diff))} {label2}</span>'
+            return f"""
+            <div class="kpi-card blue" style="border-left-color:#7B1FA2;">
+                <div class="kpi-label">{label}</div>
+                <div class="kpi-value" style="font-size:1.5rem">{fmt(projected)}</div>
+                <div class="kpi-sub">Annual Budget: {fmt(budget)}</div>
+                <div class="kpi-var">{var_html}</div>
+            </div>"""
+
+        with p1:
+            st.markdown(proj_card("Projected Income", proj_inc, annual_inc_budget), unsafe_allow_html=True)
+        with p2:
+            st.markdown(proj_card("Projected Expenses", proj_exp, annual_exp_budget, is_expense=True), unsafe_allow_html=True)
+        with p3:
+            net_color = "#2E7D32" if proj_net >= 0 else "#C62828"
+            net_diff = proj_net - annual_net_budget
+            net_arrow = "▲" if net_diff >= 0 else "▼"
+            net_label2 = "above budget" if net_diff >= 0 else "below budget"
+            net_var = f'<span style="color:{net_color};font-weight:600">{net_arrow} {fmt(abs(net_diff))} {net_label2}</span>' if annual_net_budget else ""
+            st.markdown(f"""
+            <div class="kpi-card blue" style="border-left-color:#7B1FA2;">
+                <div class="kpi-label">Projected Net</div>
+                <div class="kpi-value" style="font-size:1.5rem;color:{net_color}">{fmt(proj_net)}</div>
+                <div class="kpi-sub">Annual Budget: {fmt(annual_net_budget)}</div>
+                <div class="kpi-var">{net_var}</div>
+            </div>""", unsafe_allow_html=True)
+
+        st.caption(f"Based on {month_num} month(s) of actuals · Assumes same monthly average through December")
+
+    st.markdown("")
+
     # Income vs Expense bar
     col_left, col_right = st.columns(2)
 
@@ -741,24 +798,51 @@ with tab4:
 
     col_a, col_b = st.columns(2)
 
+    tab4_month_num = int(selected_month.split("-")[1])
+    expected_pace_pct = (tab4_month_num / 12) * 100
+
     with col_a:
-        st.markdown('<div class="section-header">YTD Actual vs Annual Budget</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-header">YTD Progress vs Budget Pace</div>', unsafe_allow_html=True)
+        st.caption(
+            f"Month {tab4_month_num} of 12 · Expected pace: {expected_pace_pct:.0f}% · "
+            f"│ = where you should be today"
+        )
         for flow in ["Income", "Expense"]:
             st.markdown(f"**{flow}**")
             subset = ytd_data[ytd_data["flow_type"] == flow].sort_values("ytd_actual", ascending=False)
             for _, row in subset.iterrows():
-                pct = (row["ytd_actual"] / row["annual_budget"] * 100) if row["annual_budget"] > 0 else 0
-                color = GREEN if flow == "Income" else RED
+                if row["annual_budget"] <= 0:
+                    continue
+                pct = (row["ytd_actual"] / row["annual_budget"] * 100)
                 bar_pct = min(pct, 100)
+                pace_gap = pct - expected_pace_pct
+
+                # For income: ahead of pace = good (green). Behind = bad (red).
+                # For expenses: ahead of pace = bad (red). Behind = good (green).
+                if flow == "Income":
+                    bar_color = GREEN if pace_gap >= -5 else RED
+                    pace_label = f"+{pace_gap:.0f}% ahead" if pace_gap >= 0 else f"{pace_gap:.0f}% behind pace"
+                    pace_color = GREEN if pace_gap >= 0 else RED
+                else:
+                    bar_color = GREEN if pace_gap <= 5 else RED
+                    pace_label = f"+{pace_gap:.0f}% over pace" if pace_gap > 0 else f"{abs(pace_gap):.0f}% under pace"
+                    pace_color = RED if pace_gap > 5 else GREEN
+
+                marker_left = min(expected_pace_pct, 99)
                 st.markdown(
-                    f"<div style='margin-bottom:0.8rem;'>"
+                    f"<div style='margin-bottom:1rem;'>"
                     f"<div style='display:flex; justify-content:space-between; font-size:0.85rem;'>"
                     f"<span>{row['category']}</span>"
-                    f"<span>{fmt(row['ytd_actual'])} / {fmt(row['annual_budget'])} ({pct:.0f}%)</span>"
+                    f"<span>{fmt(row['ytd_actual'])} / {fmt(row['annual_budget'])} "
+                    f"({pct:.0f}%) &nbsp;"
+                    f"<span style='color:{pace_color};font-weight:600;font-size:0.78rem'>{pace_label}</span>"
+                    f"</span>"
                     f"</div>"
-                    f"<div style='background:#E0E0E0; border-radius:6px; height:12px; overflow:hidden;'>"
-                    f"<div style='width:{bar_pct}%; background:{color}; height:100%; border-radius:6px;'></div>"
-                    f"</div></div>",
+                    f"<div style='background:#E0E0E0; border-radius:6px; height:14px; position:relative;'>"
+                    f"<div style='width:{bar_pct}%; background:{bar_color}; height:100%; border-radius:6px; opacity:0.85;'></div>"
+                    f"<div style='position:absolute; top:0; left:{marker_left}%; width:2px; height:100%; background:#333; opacity:0.6;'></div>"
+                    f"</div>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
 
