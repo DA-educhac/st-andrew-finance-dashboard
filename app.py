@@ -61,6 +61,12 @@ st.markdown("""
     .kpi-sub {
         font-size: 0.8rem;
         color: #888;
+        line-height: 1.6;
+    }
+    .kpi-var {
+        font-size: 0.82rem;
+        font-weight: 600;
+        margin-top: 0.15rem;
     }
     .section-header {
         font-size: 1.1rem;
@@ -109,13 +115,15 @@ def variance_color(actual, budget):
     return GREEN if actual >= budget else RED
 
 
-def kpi_card(label, value, subtitle="", card_class="blue"):
+def kpi_card(label, value, subtitle="", card_class="blue", variance_html=""):
     """Render a styled KPI card."""
+    var_block = f'<div class="kpi-var">{variance_html}</div>' if variance_html else ""
     return f"""
     <div class="kpi-card {card_class}">
         <div class="kpi-label">{label}</div>
         <div class="kpi-value">{value}</div>
         <div class="kpi-sub">{subtitle}</div>
+        {var_block}
     </div>
     """
 
@@ -303,37 +311,90 @@ with tab1:
     net_cls = "green" if net_actual >= 0 else "red"
     ytd_cls = "green" if ytd_net >= 0 else "red"
 
+    _color_map = {"green": "#2E7D32", "red": "#C62828", "amber": "#FF8F00", "blue": "#1565C0"}
+
     with c1:
-        var_inc = ((inc_actual / inc_budget - 1) * 100) if inc_budget else 0
+        inc_var = inc_actual - inc_budget
+        inc_var_color = _color_map[inc_cls]
+        if inc_budget:
+            inc_arrow = "▲" if inc_var >= 0 else "▼"
+            inc_var_label = "above budget" if inc_var >= 0 else "below budget"
+            inc_var_html = (
+                f'<span style="color:{inc_var_color}">'
+                f'{inc_arrow} {fmt(abs(inc_var))} {inc_var_label} · {inc_status}'
+                f'</span>'
+            )
+        else:
+            inc_var_html = ""
         st.markdown(kpi_card(
             "Total Income",
             fmt(inc_actual),
-            f"Budget: {fmt(inc_budget)} · {inc_status}",
+            f"Budget: {fmt(inc_budget)}",
             inc_cls,
+            inc_var_html,
         ), unsafe_allow_html=True)
 
     with c2:
+        exp_var = exp_actual - exp_budget
+        exp_var_color = _color_map[exp_cls]
+        if exp_budget:
+            exp_arrow = "▲" if exp_var > 0 else "▼"
+            exp_var_label = "over budget" if exp_var > 0 else "under budget"
+            exp_var_html = (
+                f'<span style="color:{exp_var_color}">'
+                f'{exp_arrow} {fmt(abs(exp_var))} {exp_var_label} · {exp_status}'
+                f'</span>'
+            )
+        else:
+            exp_var_html = ""
         st.markdown(kpi_card(
             "Total Expenses",
             fmt(exp_actual),
-            f"Budget: {fmt(exp_budget)} · {exp_status}",
+            f"Budget: {fmt(exp_budget)}",
             exp_cls,
+            exp_var_html,
         ), unsafe_allow_html=True)
 
     with c3:
+        net_var = net_actual - net_budget
+        net_var_color = _color_map[net_cls]
+        if net_budget:
+            net_arrow = "▲" if net_var >= 0 else "▼"
+            net_var_label = "above budget" if net_var >= 0 else "below budget"
+            net_var_html = (
+                f'<span style="color:{net_var_color}">'
+                f'{net_arrow} {fmt(abs(net_var))} {net_var_label}'
+                f'</span>'
+            )
+        else:
+            net_var_html = ""
         st.markdown(kpi_card(
             "Net Income",
             fmt(net_actual),
             f"Budget: {fmt(net_budget)}",
             net_cls,
+            net_var_html,
         ), unsafe_allow_html=True)
 
     with c4:
+        ytd_var = ytd_net - annual_net_budget
+        ytd_var_color = _color_map[ytd_cls]
+        if annual_net_budget:
+            ytd_arrow = "▲" if ytd_var >= 0 else "▼"
+            ytd_var_label = "above budget" if ytd_var >= 0 else "below budget"
+            ytd_var_html = (
+                f'<span style="color:{ytd_var_color}">'
+                f'{ytd_arrow} {fmt(abs(ytd_var))} {ytd_var_label}'
+                f'</span>'
+            )
+        else:
+            ytd_var_html = ""
         st.markdown(kpi_card(
             "YTD Net",
             fmt(ytd_net),
             f"Annual Budget: {fmt(annual_net_budget)}",
             ytd_cls,
+            ytd_var_html,
         ), unsafe_allow_html=True)
 
     st.markdown("")
