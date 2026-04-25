@@ -210,6 +210,15 @@ with st.sidebar:
     )
 
     st.markdown("---")
+
+    # Extraordinary items toggle
+    exclude_extraordinary = st.checkbox(
+        "Exclude Extraordinary Items",
+        value=False,
+        help="Hide unbudgeted one-off items (annual budget = $0) to focus on operating performance.",
+    )
+
+    st.markdown("---")
     st.markdown(
         f"<small style='color:#999;'>📁 {len(uploaded_files)} file(s) loaded<br>"
         f"📅 {len(months)} month(s) available<br>"
@@ -222,6 +231,34 @@ month_data = data[
     (data["report_month"] == selected_month)
     & (data["category"].isin(selected_categories))
 ]
+
+# Identify extraordinary items BEFORE filtering
+extraordinary = month_data[
+    (month_data["annual_budget"] == 0) & (month_data["ytd_actual"].abs() > 100)
+].copy()
+extraordinary["impact_type"] = extraordinary["flow_type"].map(
+    {"Income": "Unbudgeted Income", "Expense": "Unbudgeted Expense"}
+)
+
+# Also find items massively over budget (>200% and >$5K over)
+budgeted_items = month_data[month_data["annual_budget"] > 0].copy()
+if not budgeted_items.empty:
+    budgeted_items["_ytd_var"] = budgeted_items["ytd_actual"] - budgeted_items["ytd_budget"]
+    budgeted_items["_ytd_pct"] = budgeted_items.apply(
+        lambda r: (r["ytd_actual"] / r["ytd_budget"] - 1) * 100
+        if r["ytd_budget"] != 0 else 0, axis=1
+    )
+    over_budget_outliers = budgeted_items[
+        (budgeted_items["_ytd_var"] > 5000) & (budgeted_items["_ytd_pct"] > 100)
+    ].copy()
+    over_budget_outliers["impact_type"] = "Massively Over Budget"
+else:
+    over_budget_outliers = pd.DataFrame()
+
+# Apply extraordinary filter if toggle is on
+if exclude_extraordinary:
+    month_data = month_data[month_data["annual_budget"] != 0]
+
 income = month_data[month_data["flow_type"] == "Income"]
 expense = month_data[month_data["flow_type"] == "Expense"]
 
@@ -361,6 +398,84 @@ with tab1:
             plot_bgcolor="white",
         )
         st.plotly_chart(fig2, use_container_width=True)
+
+    # ── Extraordinary Items Alert ──
+    if not extraordinary.empty or not over_budget_outliers.empty:
+        st.markdown('<div class="section-header">Extraordinary & High-Impact Items</div>',
+                    unsafe_allow_html=True)
+
+        if exclude_extraordinary:
+            st.info("Extraordinary items are currently **excluded** from the numbers above. "
+                    "Uncheck the sidebar toggle to include them.")
+
+        # Unbudgeted items
+        if not extraordinary.empty:
+            ext_sorted = extraordinary.sort_values("ytd_actual", key=abs, ascending=False)
+            ext_inc = ext_sorted[ext_sorted["flow_type"] == "Income"]
+            ext_exp = ext_sorted[ext_sorted["flow_type"] == "Expense"]
+
+            if not ext_inc.empty:
+                total_ext_inc = ext_inc["ytd_actual"].sum()
+                st.markdown(
+                    f'<div style="background:#E8F5E9; border-left:4px solid #2E7D32; '
+                    f'border-radius:8px; padding:0.8rem 1rem; margin-bottom:0.8rem;">'
+                    f'<strong style="color:#2E7D32;">Unbudgeted Income — '
+                    f'YTD Total: {fmt(total_ext_inc)}</strong></div>',
+                    unsafe_allow_html=True,
+                )
+                for _, r in ext_inc.iterrows():
+                    st.markdown(
+                        f'<div style="background:#F5F5F5; border-radius:6px; padding:0.5rem 1rem; '
+                        f'margin-bottom:0.3rem; margin-left:1rem; font-size:0.88rem;">'
+                        f'<strong>{r["account_name"]}</strong> '
+                        f'<span style="color:#888;">({r["category"]})</span> — '
+                        f'YTD: <strong>{fmt(r["ytd_actual"])}</strong> · '
+                        f'This Month: {fmt(r["current_actual"])}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            if not ext_exp.empty:
+                total_ext_exp = ext_exp["ytd_actual"].sum()
+                st.markdown(
+                    f'<div style="background:#FFEBEE; border-left:4px solid #C62828; '
+                    f'border-radius:8px; padding:0.8rem 1rem; margin-top:0.8rem; margin-bottom:0.8rem;">'
+                    f'<strong style="color:#C62828;">Unbudgeted Expenses — '
+                    f'YTD Total: {fmt(total_ext_exp)}</strong></div>',
+                    unsafe_allow_html=True,
+                )
+                for _, r in ext_exp.iterrows():
+                    st.markdown(
+                        f'<div style="background:#F5F5F5; border-radius:6px; padding:0.5rem 1rem; '
+                        f'margin-bottom:0.3rem; margin-left:1rem; font-size:0.88rem;">'
+                        f'<strong>{r["account_name"]}</strong> '
+                        f'<span style="color:#888;">({r["category"]})</span> — '
+                        f'YTD: <strong>{fmt(r["ytd_actual"])}</strong> · '
+                        f'This Month: {fmt(r["current_actual"])}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+        # Over-budget outliers
+        if not over_budget_outliers.empty:
+            st.markdown(
+                f'<div style="background:#FFF3E0; border-left:4px solid #FF8F00; '
+                f'border-radius:8px; padding:0.8rem 1rem; margin-top:0.8rem; margin-bottom:0.8rem;">'
+                f'<strong style="color:#E65100;">Massively Over Budget (>100% & >$5K)</strong></div>',
+                unsafe_allow_html=True,
+            )
+            for _, r in over_budget_outliers.sort_values("_ytd_var", ascending=False).iterrows():
+                st.markdown(
+                    f'<div style="background:#F5F5F5; border-radius:6px; padding:0.5rem 1rem; '
+                    f'margin-bottom:0.3rem; margin-left:1rem; font-size:0.88rem;">'
+                    f'<strong>{r["account_name"]}</strong> '
+                    f'<span style="color:#888;">({r["category"]})</span> — '
+                    f'YTD Actual: <strong>{fmt(r["ytd_actual"])}</strong> vs '
+                    f'Budget: {fmt(r["ytd_budget"])} · '
+                    f'<span style="color:#C62828;">Over by {fmt(r["_ytd_var"])} ({r["_ytd_pct"]:+.0f}%)</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
 
 # ──────────────────────────────────────────────
